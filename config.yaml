@@ -1,11 +1,18 @@
-# Modern PyCaret-Streamlit Application Configuration
+# XploreML Configuration File
+# Learn, Experiment, and Discover Machine Learning without Code
 
 app:
-  title: "Modern ML Web Application"
-  description: "End-to-end machine learning web application built with PyCaret and Streamlit"
+  title: "XploreML - No-Code ML Platform"
+  description: "Learn, Experiment, and Discover Machine Learning without Code. XploreML makes AI accessible to everyone with lightning-fast training, advanced preprocessing, and comprehensive model explainability."
   version: "2.0.0"
-  page_icon: "🤖"
+  page_icon: "🚀"
   layout: "wide"
+  
+  # Branding
+  brand_name: "XploreML"
+  tagline: "Learn, Experiment, and Discover Machine Learning without Code"
+  github_url: "https://github.com/syedsajjadaskari/xploreml"
+  documentation_url: "https://github.com/syedsajjadaskari/xploreml/wiki"
   
   # File upload settings
   max_file_size: 200  # MB
@@ -39,7 +46,7 @@ models:
   # Model management
   auto_save: true
   save_path: "models/"
-  model_name_format: "model_{timestamp}"
+  model_name_format: "xploreml_model_{timestamp}"
   
   # Training settings
   default_cv_folds: 5
@@ -50,7 +57,7 @@ models:
   min_accuracy_classification: 0.6
   min_r2_regression: 0.5
   
-  # Available models
+  # Available models for XploreML
   classification_models:
     - "lr"      # Logistic Regression
     - "rf"      # Random Forest
@@ -86,22 +93,57 @@ models:
     - "en"      # Elastic Net
     - "huber"   # Huber Regressor
 
-visualization:
-  # Plotting settings
-  theme: "plotly_white"
-  color_palette: 
-    - "#1f77b4"
-    - "#ff7f0e" 
-    - "#2ca02c"
-    - "#d62728"
-    - "#9467bd"
-    - "#8c564b"
-    - "#e377c2"
-    - "#7f7f7f"
-    - "#bcbd22"
-    - "#17becf"
+# XploreML XAI (Explainable AI) Configuration
+xai:
+  # XAI feature flags
+  enable_global_explanations: true
+  enable_local_explanations: true
+  enable_feature_importance: true
+  enable_partial_dependence: true
+  enable_surrogate_models: true
   
-  # Default plots
+  # Performance settings
+  default_sample_size: 200
+  max_sample_size: 1000
+  explanation_timeout: 300  # seconds
+  
+  # Available XAI methods
+  methods:
+    permutation_importance: true
+    feature_statistics: true
+    model_agnostic: true
+    lime_explanations: false  # Requires installation
+    shap_analysis: false      # Requires installation
+    eli5_explanations: false  # Requires installation
+  
+  # Visualization settings
+  max_features_display: 20
+  interactive_plots: true
+
+visualization:
+  # XploreML theming
+  theme: "plotly_white"
+  brand_colors: 
+    primary: "#667eea"
+    secondary: "#764ba2"
+    success: "#11998e"
+    warning: "#f093fb"
+    error: "#ff6b6b"
+    info: "#4facfe"
+  
+  color_palette: 
+    - "#667eea"
+    - "#764ba2"
+    - "#11998e"
+    - "#f093fb"
+    - "#ff6b6b"
+    - "#4facfe"
+    - "#43e97b"
+    - "#38f9d7"
+    - "#ffecd2"
+    - "#fcb69f"
+  
+  # Default plots for XploreML
   default_classification_plots:
     - "confusion_matrix"
     - "auc"
@@ -126,15 +168,20 @@ visualization:
   max_features_display: 20
 
 logging:
-  # Logging configuration
+  # Logging configuration for XploreML
   level: "INFO"
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: "app.log"
+  format: "%(asctime)s - XploreML - %(name)s - %(levelname)s - %(message)s"
+  file: "xploreml.log"
   max_file_size: 10  # MB
   backup_count: 5
+  
+  # XploreML specific logging
+  log_user_actions: true
+  log_model_training: true
+  log_predictions: false  # Privacy consideration
 
 security:
-  # Security settings
+  # Security settings for XploreML
   enable_rate_limiting: true
   max_requests_per_minute: 60
   enable_input_validation: true
@@ -149,9 +196,13 @@ security:
   
   max_upload_attempts: 3
   session_encryption: true
+  
+  # Privacy settings
+  auto_cleanup_data: true
+  data_retention_hours: 24
 
 performance:
-  # Performance optimization
+  # Performance optimization for XploreML
   enable_caching: true
   cache_ttl: 3600  # seconds
   max_cache_size: 1000  # MB
@@ -164,12 +215,17 @@ performance:
   # Memory management
   max_memory_usage: 4000  # MB
   garbage_collection_threshold: 0.8
+  
+  # Training optimization
+  enable_fast_training: true
+  default_training_timeout: 300  # seconds
+  enable_early_stopping: true
 
 api:
-  # Future API settings
+  # Future API settings for XploreML
   enable_api: false
-  api_version: "v1"
-  api_prefix: "/api"
+  api_version: "v2"
+  api_prefix: "/api/v2"
   
   # Authentication
   require_api_key: true
@@ -179,74 +235,102 @@ api:
   enable_training_endpoint: true
   enable_prediction_endpoint: true
   enable_model_management: true
+  enable_xai_endpoint: true
 
 deployment:
-  # Deployment settings
-  environment: "development"  # development, staging, production
+  # Deployment settings for XploreML
+  environment: "production"  # development, staging, production
   
   # Docker settings
-  docker_image: "pycaret-streamlit"
+  docker_image: "xploreml"
   docker_tag: "latest"
   port: 8501
   
+  # Kubernetes settings
+  namespace: "ml-app"
+  replicas: 2
+  max_replicas: 5
+  
   # Cloud deployment
-  cloud_provider: null  # aws, gcp, azure
-  auto_scaling: false
+  cloud_provider: "gcp"  # aws, gcp, azure
+  auto_scaling: true
   min_instances: 1
   max_instances: 5
+  
+  # Resource requirements
+  cpu_request: "500m"
+  cpu_limit: "1000m"
+  memory_request: "2Gi"
+  memory_limit: "4Gi"
 
 monitoring:
-  # Application monitoring
+  # Application monitoring for XploreML
   enable_health_checks: true
   health_check_interval: 300  # seconds
   
   # Metrics collection
   collect_usage_metrics: true
   collect_performance_metrics: true
+  collect_model_metrics: true
   
   # Alerting
-  enable_alerts: false
-  alert_email: null
+  enable_alerts: true
+  alert_email: "syedsajjad62@gmail.com"
   
   # Model monitoring
   track_model_performance: true
-  data_drift_detection: false
+  data_drift_detection: true
   model_drift_threshold: 0.1
+  
+  # XploreML specific monitoring
+  track_user_journeys: true
+  monitor_training_success_rate: true
+  track_xai_usage: true
 
 database:
-  # Database settings (for future use)
+  # Database settings for XploreML (future use)
   enable_database: false
-  database_type: "sqlite"  # sqlite, postgresql, mysql
+  database_type: "postgresql"  # sqlite, postgresql, mysql
   connection_string: null
   
   # Tables
   store_experiments: false
   store_predictions: false
   store_user_sessions: false
+  store_model_metadata: true
 
 features:
-  # Feature flags
+  # XploreML feature flags
   enable_auto_ml: true
   enable_hyperparameter_tuning: true
   enable_ensemble_models: true
   enable_model_interpretation: true
-  enable_shap_analysis: true
+  enable_advanced_preprocessing: true
   enable_data_profiling: true
   enable_batch_predictions: true
   enable_model_comparison: true
   enable_custom_models: false
   enable_model_deployment: false
-  enable_experiment_tracking: false
+  enable_experiment_tracking: true
+  
+  # XAI features
+  enable_xai_analysis: true
+  enable_feature_importance: true
+  enable_local_explanations: true
+  enable_global_explanations: true
+  enable_model_debugging: true
 
 ui:
-  # User interface settings
+  # XploreML UI settings
   show_sidebar_info: true
   show_progress_indicators: true
   enable_dark_mode_toggle: false
+  brand_theme: "gradient"  # gradient, solid, minimal
   
   # Navigation
   enable_step_navigation: true
   show_breadcrumbs: true
+  enable_quick_actions: true
   
   # Data display
   max_rows_display: 1000
@@ -256,3 +340,27 @@ ui:
   # Responsiveness
   mobile_optimized: true
   tablet_optimized: true
+  
+  # XploreML specific UI
+  show_xai_recommendations: true
+  enable_model_cards: true
+  show_performance_badges: true
+
+# Google Cloud Platform settings for XploreML
+gcp:
+  # GKE settings
+  cluster_name: "xploreml-cluster"
+  cluster_zone: "us-central1-a"
+  
+  # Storage settings
+  enable_gcs_storage: true
+  temp_bucket: "xploreml-temp-storage"
+  models_bucket: "xploreml-models"
+  
+  # Monitoring
+  enable_stackdriver: true
+  enable_cloud_trace: true
+  
+  # Security
+  enable_workload_identity: true
+  service_account: "xploreml-sa@project.iam.gserviceaccount.com"

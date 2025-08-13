@@ -1,32 +1,46 @@
-# Create k8s/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ml-app
-  namespace: ml-app
+  name: xploreml-app
+  namespace: xploreml
   labels:
-    app: ml-app
-    version: v1.0.0
+    app: xploreml
+    component: webapp
+    version: v2.0.0
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: ml-app
+      app: xploreml
+      component: webapp
   template:
     metadata:
       labels:
-        app: ml-app
-        version: v1.0.0
+        app: xploreml
+        component: webapp
+        version: v2.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8501"
+        prometheus.io/path: "/_stcore/health"
     spec:
+      serviceAccountName: xploreml-sa
       containers:
-      - name: ml-app
-        image: gcr.io/ml-xai-dashboard-467905/ml-app:v1.0.0  # Replace with your project ID
+      - name: xploreml
+        image: gcr.io/xploreml/xploreml:latest
         ports:
         - containerPort: 8501
           name: http
+          protocol: TCP
         env:
+        - name: APP_NAME
+          value: "XploreML"
+        - name: APP_VERSION
+          value: "v2.0.0"
+        - name: ENVIRONMENT
+          value: "production"
         - name: GCS_TEMP_BUCKET
-          value: "gs://ml-xai-dashboard-467905-ml-temp-storage/"  # Replace with your bucket
+          value: "gs://xploreml-temp-storage/"
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: "/etc/gcs/key.json"
         - name: STREAMLIT_SERVER_HEADLESS
@@ -35,19 +49,27 @@ spec:
           value: "8501"
         - name: STREAMLIT_SERVER_ADDRESS
           value: "0.0.0.0"
+        - name: PYTHONPATH
+          value: "/app"
         resources:
           requests:
             memory: "2Gi"
             cpu: "500m"
+            ephemeral-storage: "1Gi"
           limits:
             memory: "4Gi"
             cpu: "1000m"
+            ephemeral-storage: "2Gi"
         volumeMounts:
         - name: streamlit-config
           mountPath: /app/.streamlit
           readOnly: true
         - name: gcs-credentials
           mountPath: /etc/gcs
+          readOnly: true
+        - name: app-config
+          mountPath: /app/config.yaml
+          subPath: config.yaml
           readOnly: true
         livenessProbe:
           httpGet:
@@ -56,6 +78,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /_stcore/health
@@ -63,27 +86,26 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
+          failureThreshold: 2
+        startupProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
       volumes:
       - name: streamlit-config
         configMap:
-          name: streamlit-config
+          name: xploreml-config
       - name: gcs-credentials
         secret:
-          secretName: gcs-credentials
+          secretName: xploreml-gcs-credentials
+      - name: app-config
+        configMap:
+          name: xploreml-app-config
+          items:
+          - key: config.yaml
+            path: config.yaml
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: ml-app-service
-  namespace: ml-app
-  labels:
-    app: ml-app
-spec:
-  type: ClusterIP
-  ports:
-  - port: 80
-    targetPort: 8501
-    protocol: TCP
-    name: http
-  selector:
-    app: ml-app

@@ -1,16 +1,18 @@
-# Create k8s/hpa.yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: ml-app-hpa
-  namespace: ml-app
+  name: xploreml-hpa
+  namespace: xploreml
+  labels:
+    app: xploreml
+    component: autoscaler
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: ml-app
-  minReplicas: 1
-  maxReplicas: 5
+    name: xploreml-app
+  minReplicas: 2
+  maxReplicas: 10
   metrics:
   - type: Resource
     resource:
@@ -24,3 +26,17 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+---

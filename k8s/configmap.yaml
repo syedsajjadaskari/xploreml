@@ -1,9 +1,11 @@
-# Create k8s/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: streamlit-config
-  namespace: ml-app
+  name: xploreml-config
+  namespace: xploreml
+  labels:
+    app: xploreml
+    component: config
 data:
   config.toml: |
     [global]
@@ -24,7 +26,7 @@ data:
     gatherUsageStats = false
 
     [theme]
-    primaryColor = "#FF6B6B"
+    primaryColor = "#667eea"
     backgroundColor = "#FFFFFF"
     secondaryBackgroundColor = "#F0F2F6"
     textColor = "#262730"
@@ -40,3 +42,4 @@ data:
     fixMatplotlib = true
     postScriptGC = true
     fastReruns = true
+---

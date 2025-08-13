@@ -1,0 +1,388 @@
+# .github/workflows/xploreml-cicd.yml
+name: XploreML CI/CD for GKE Autopilot
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PROJECT_ID: xploreml
+  IMAGE_NAME: xploreml
+  REGISTRY: gcr.io
+  GKE_CLUSTER: xploreml-cluster
+  GKE_ZONE: us-central1-a
+  DEPLOYMENT_NAME: xploreml-app
+  NAMESPACE: xploreml
+
+jobs:
+  # Test Job
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest flake8 black
+    
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Format check with black
+      run: |
+        black --check --diff .
+    
+    - name: Test imports and basic functionality
+      run: |
+        python -c "import streamlit; import pandas; import numpy; import plotly; print('✅ All core dependencies working')"
+        python -c "import sys; sys.path.append('.'); from src.data_handler import DataHandler; print('✅ XploreML modules working')"
+
+  # Security Scan
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # Build and Deploy
+  build-and-deploy:
+    name: Build and Deploy to GKE Autopilot
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
+    
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+      url: ${{ steps.get-url.outputs.url }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        export_default_credentials: true
+    
+    - name: Configure Docker for GCR
+      run: |
+        gcloud auth configure-docker
+    
+    - name: Generate build metadata
+      id: meta
+      run: |
+        echo "image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        elif [[ $GITHUB_REF == refs/heads/main ]]; then
+          echo "tag=latest" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+        fi
+        echo "build-date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+    
+    - name: Build Docker image
+      run: |
+        docker build \
+          --tag ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }} \
+          --tag ${{ steps.meta.outputs.image }}:${{ github.sha }} \
+          --label "org.opencontainers.image.created=${{ steps.meta.outputs.build-date }}" \
+          --label "org.opencontainers.image.source=${{ github.repositoryUrl }}" \
+          --label "org.opencontainers.image.revision=${{ github.sha }}" \
+          --label "org.opencontainers.image.version=${{ steps.meta.outputs.tag }}" \
+          .
+    
+    - name: Push Docker image
+      run: |
+        docker push ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+        docker push ${{ steps.meta.outputs.image }}:${{ github.sha }}
+    
+    - name: Get GKE credentials
+      run: |
+        gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+          --zone ${{ env.GKE_ZONE }} \
+          --project ${{ env.PROJECT_ID }}
+    
+    - name: Deploy to GKE Autopilot
+      run: |
+        # Set the namespace based on branch
+        if [[ $GITHUB_REF == refs/heads/main ]]; then
+          NAMESPACE="xploreml"
+          REPLICAS=2
+        else
+          NAMESPACE="xploreml-staging"
+          REPLICAS=1
+        fi
+        
+        echo "🚀 Deploying to namespace: $NAMESPACE"
+        
+        # Create namespace if it doesn't exist
+        kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Apply the deployment with updated image
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: xploreml-sa
+          namespace: $NAMESPACE
+          annotations:
+            iam.gke.io/gcp-service-account: xploreml-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${{ env.DEPLOYMENT_NAME }}
+          namespace: $NAMESPACE
+          labels:
+            app: xploreml
+            version: ${{ steps.meta.outputs.tag }}
+            environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+        spec:
+          replicas: $REPLICAS
+          selector:
+            matchLabels:
+              app: xploreml
+          template:
+            metadata:
+              labels:
+                app: xploreml
+                version: ${{ steps.meta.outputs.tag }}
+            spec:
+              serviceAccountName: xploreml-sa
+              containers:
+              - name: xploreml
+                image: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+                ports:
+                - containerPort: 8501
+                env:
+                - name: STREAMLIT_SERVER_HEADLESS
+                  value: "true"
+                - name: STREAMLIT_SERVER_PORT
+                  value: "8501"
+                - name: STREAMLIT_SERVER_ADDRESS
+                  value: "0.0.0.0"
+                - name: ENVIRONMENT
+                  value: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+                - name: APP_VERSION
+                  value: ${{ steps.meta.outputs.tag }}
+                - name: GIT_SHA
+                  value: ${{ github.sha }}
+                resources:
+                  requests:
+                    memory: "1Gi"
+                    cpu: "500m"
+                    ephemeral-storage: "1Gi"
+                  limits:
+                    memory: "4Gi"
+                    cpu: "2000m"
+                    ephemeral-storage: "2Gi"
+                readinessProbe:
+                  httpGet:
+                    path: /_stcore/health
+                    port: 8501
+                  initialDelaySeconds: 45
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                livenessProbe:
+                  httpGet:
+                    path: /_stcore/health
+                    port: 8501
+                  initialDelaySeconds: 90
+                  periodSeconds: 20
+                  timeoutSeconds: 10
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: xploreml-service
+          namespace: $NAMESPACE
+          labels:
+            app: xploreml
+        spec:
+          type: LoadBalancer
+          ports:
+          - port: 80
+            targetPort: 8501
+            protocol: TCP
+            name: http
+          selector:
+            app: xploreml
+        EOF
+        
+        # Store namespace for later steps
+        echo "DEPLOY_NAMESPACE=$NAMESPACE" >> $GITHUB_ENV
+    
+    - name: Wait for deployment
+      run: |
+        echo "⏳ Waiting for deployment to be ready..."
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+          --namespace=${{ env.DEPLOY_NAMESPACE }} \
+          --timeout=600s
+        
+        echo "✅ Deployment successful!"
+        kubectl get pods -n ${{ env.DEPLOY_NAMESPACE }} -l app=xploreml
+    
+    - name: Get service URL
+      id: get-url
+      run: |
+        echo "🌐 Getting service URL..."
+        
+        # Wait for LoadBalancer IP
+        for i in {1..30}; do
+          EXTERNAL_IP=$(kubectl get service xploreml-service \
+            --namespace=${{ env.DEPLOY_NAMESPACE }} \
+            --output jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          
+          if [[ -n "$EXTERNAL_IP" && "$EXTERNAL_IP" != "<pending>" ]]; then
+            echo "url=http://$EXTERNAL_IP" >> $GITHUB_OUTPUT
+            echo "🎉 XploreML is available at: http://$EXTERNAL_IP"
+            break
+          fi
+          
+          echo "⏳ Waiting for LoadBalancer IP... (attempt $i/30)"
+          sleep 20
+        done
+        
+        if [[ -z "$EXTERNAL_IP" || "$EXTERNAL_IP" == "<pending>" ]]; then
+          echo "⚠️ LoadBalancer IP still pending. Check manually with:"
+          echo "kubectl get service xploreml-service -n ${{ env.DEPLOY_NAMESPACE }}"
+          echo "url=pending" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Run health check
+      run: |
+        echo "🏥 Running health check..."
+        
+        # Get the external IP
+        EXTERNAL_IP=$(kubectl get service xploreml-service \
+          --namespace=${{ env.DEPLOY_NAMESPACE }} \
+          --output jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        
+        if [[ -n "$EXTERNAL_IP" && "$EXTERNAL_IP" != "<pending>" ]]; then
+          # Wait a bit for service to be fully ready
+          sleep 30
+          
+          # Test health endpoint
+          for i in {1..10}; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$EXTERNAL_IP/_stcore/health || echo "000")
+            if [[ "$HTTP_STATUS" == "200" ]]; then
+              echo "✅ Health check passed!"
+              break
+            fi
+            echo "⏳ Health check attempt $i/10 (status: $HTTP_STATUS)"
+            sleep 15
+          done
+          
+          if [[ "$HTTP_STATUS" != "200" ]]; then
+            echo "⚠️ Health check failed with status: $HTTP_STATUS"
+            echo "Check the application manually"
+          fi
+        else
+          echo "⚠️ No external IP available for health check"
+        fi
+    
+    - name: Update deployment status
+      run: |
+        echo "📊 Deployment Summary:"
+        echo "  Environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}"
+        echo "  Image: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}"
+        echo "  Namespace: ${{ env.DEPLOY_NAMESPACE }}"
+        echo "  Git SHA: ${{ github.sha }}"
+        
+        kubectl get deployment ${{ env.DEPLOYMENT_NAME }} -n ${{ env.DEPLOY_NAMESPACE }}
+        kubectl get service xploreml-service -n ${{ env.DEPLOY_NAMESPACE }}
+
+  # Cleanup old images
+  cleanup:
+    name: Cleanup Old Images
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+    
+    - name: Cleanup old images
+      run: |
+        echo "🧹 Cleaning up old images..."
+        
+        # Keep only the last 10 images
+        gcloud container images list-tags ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }} \
+          --limit=999999 \
+          --sort-by=TIMESTAMP \
+          --format="get(digest)" | tail -n +11 | \
+        while read digest; do
+          echo "Deleting old image: $digest"
+          gcloud container images delete "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}@$digest" --quiet || true
+        done
+
+  # Notification
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy]
+    if: always()
+    
+    steps:
+    - name: Notify on success
+      if: needs.build-and-deploy.result == 'success'
+      run: |
+        echo "🎉 XploreML deployment successful!"
+        echo "Environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}"
+        echo "Image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}"
+        echo "Commit: ${{ github.sha }}"
+    
+    - name: Notify on failure
+      if: needs.build-and-deploy.result == 'failure'
+      run: |
+        echo "❌ XploreML deployment failed!"
+        echo "Check the logs above for details"
+        exit 1

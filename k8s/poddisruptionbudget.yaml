@@ -1,0 +1,14 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xploreml-pdb
+  namespace: xploreml
+  labels:
+    app: xploreml
+    component: availability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: xploreml
+      component: webapp

@@ -1,8 +1,10 @@
-# Create k8s/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ml-app
+  name: xploreml
   labels:
-    name: ml-app
+    name: xploreml
+    app: xploreml
     environment: production
+    version: v2.0.0
+---

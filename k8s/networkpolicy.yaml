@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: xploreml-network-policy
+  namespace: xploreml
+  labels:
+    app: xploreml
+    component: security
+spec:
+  podSelector:
+    matchLabels:
+      app: xploreml
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    ports:
+    - protocol: TCP
+      port: 8501
+  egress:
+  - {} # Allow all egress for now (can be restricted as needed)
+---

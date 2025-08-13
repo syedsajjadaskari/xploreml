@@ -1,0 +1,32 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install flake8 black pytest
+    
+    - name: Lint
+      run: |
+        flake8 . --max-line-length=127
+        black --check .
+    
+    - name: Test imports
+      run: |
+        python -c "import streamlit; import pandas; print('✅ Dependencies OK')"

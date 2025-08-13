@@ -1,6 +1,6 @@
 """
+XploreML - Learn, Experiment, and Discover Machine Learning without Code
 Updated Main Application Entry Point with XAI Integration
-Includes the new Universal XAI Explainability page
 """
 
 import streamlit as st
@@ -56,16 +56,36 @@ except ImportError as e:
     st.error(f"❌ Error importing utility modules: {e}")
     st.stop()
 
-# Page configuration
+# Page configuration with XploreML branding
 st.set_page_config(
-    page_title="Modern ML Web Application with XAI",
-    page_icon="🤖",
+    page_title="XploreML - No-Code Machine Learning Platform",
+    page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/yourusername/xploreml/wiki',
+        'Report a bug': 'https://github.com/yourusername/xploreml/issues',
+        'About': """
+        ## XploreML 🚀
+        **Learn, Experiment, and Discover Machine Learning without Code**
+        
+        XploreML makes machine learning accessible to everyone. Build, analyze, 
+        and deploy ML models without writing a single line of code.
+        
+        ### Features:
+        - 🔥 Lightning-fast training (10-30 seconds)
+        - 📊 Interactive data exploration
+        - 🧠 Advanced model explainability (XAI)
+        - 🤖 Multiple ML algorithms
+        - ☁️ Cloud-ready deployment
+        
+        **Version**: 2.0.0 | **License**: MIT
+        """
+    }
 )
 
 def main():
-    """Main application function with XAI integration."""
+    """Main application function with XploreML branding and XAI integration."""
     try:
         # Load configuration
         config = load_config()
@@ -81,9 +101,8 @@ def main():
         # Create sidebar navigation (now includes XAI)
         create_sidebar(None)
         
-        # Main content area
-        st.title("🤖 Modern ML Web Application with XAI")
-        st.markdown("*Build, deploy, and explain machine learning models in seconds*")
+        # Main content area with XploreML branding
+        _show_main_header()
         
         # Show XAI availability status
         _show_xai_status()
@@ -163,79 +182,34 @@ def main():
                 'xai_available': XAI_PAGE_AVAILABLE
             })
 
-def _show_xai_status():
-    """Show XAI availability and compatibility status."""
-    if not XAI_PAGE_AVAILABLE:
-        st.warning("⚠️ XAI page not available. Check page imports.")
-        return
-    
-    # Check XAI library availability
-    xai_libraries = {}
-    
-    try:
-        import lime
-        xai_libraries['LIME'] = "✅ Available"
-    except ImportError:
-        xai_libraries['LIME'] = "❌ Install: pip install lime"
-    
-    try:
-        from sklearn.inspection import permutation_importance
-        xai_libraries['Sklearn Inspection'] = "✅ Available"
-    except ImportError:
-        xai_libraries['Sklearn Inspection'] = "❌ Update sklearn"
-    
-    try:
-        import eli5
-        xai_libraries['ELI5'] = "✅ Available"
-    except ImportError:
-        xai_libraries['ELI5'] = "❌ Install: pip install eli5"
-    
-    try:
-        import shap
-        xai_libraries['SHAP'] = "✅ Available"
-    except ImportError:
-        xai_libraries['SHAP'] = "❌ Install: pip install shap"
-    
-    # Show XAI readiness
-    if st.session_state.trained_model is not None:
-        st.success("🧠 **XAI Analysis Ready!** Your model is trained and ready for explainability analysis.")
-        
-        # Quick XAI preview
-        with st.expander("🔍 XAI Quick Preview"):
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.write("**📊 Available Analysis:**")
-                st.write("• Global feature importance")
-                st.write("• Local instance explanations")
-                st.write("• Feature interaction analysis")
-                st.write("• Model behavior patterns")
-            
-            with col2:
-                st.write("**🤖 Model Compatibility:**")
-                model_type = type(st.session_state.trained_model).__name__
-                st.write(f"• Model: {model_type}")
-                
-                # Check compatibility
-                universal_methods = ["Permutation Importance", "Feature Statistics", "Surrogate Models"]
-                for method in universal_methods:
-                    st.write(f"• ✅ {method}")
-            
-            with col3:
-                st.write("**🔧 XAI Libraries:**")
-                for lib, status in xai_libraries.items():
-                    st.write(f"• {status.split()[0]} {lib}")
-                
-                # Quick start button
-                if st.button("🚀 Start XAI Analysis", type="primary", use_container_width=True):
-                    st.session_state.current_step = "xai"
-                    st.rerun()
-    
-    elif st.session_state.data is not None and st.session_state.target_column is not None:
-        st.info("🎯 **Almost Ready for XAI!** Train a model first, then explore explainability.")
-    
-    else:
-        st.info("📊 **XAI Analysis Available** - Complete the ML pipeline to unlock model explainability features.")
+def _show_main_header():
+    """Show XploreML branded main header."""
+    st.markdown("""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        text-align: center;
+        color: white;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    ">
+        <h1 style="
+            font-size: 3.5rem;
+            margin: 0;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        ">🚀 XploreML</h1>
+        <h3 style="
+            font-size: 1.4rem;
+            margin: 0.5rem 0 0 0;
+            font-weight: 300;
+            opacity: 0.95;
+        ">Learn, Experiment, and Discover Machine Learning without Code</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 
 def _initialize_xai_session_state():
     """Initialize XAI-specific session state variables."""
@@ -252,8 +226,8 @@ def _initialize_xai_session_state():
             st.session_state[key] = value
 
 def _show_pipeline_overview():
-    """Show enhanced pipeline overview with XAI."""
-    with st.expander("🔍 Pipeline Overview"):
+    """Show enhanced pipeline overview with XAI and XploreML branding."""
+    with st.expander("🔍 XploreML Pipeline Overview"):
         steps_status = {
             "📁 Data Upload": st.session_state.data is not None,
             "🔍 Data Exploration": st.session_state.target_column is not None,
@@ -272,15 +246,15 @@ def _show_pipeline_overview():
                 else:
                     st.info(f"⏳ {step}")
         
-        # Show next recommended action
+        # Show next recommended action with XploreML branding
         if st.session_state.data is None:
-            st.info("👆 **Next:** Upload your dataset to begin")
+            st.info("👆 **Next:** Upload your dataset to begin your XploreML journey")
         elif st.session_state.target_column is None:
             st.info("👆 **Next:** Explore data and select target column")
         elif st.session_state.trained_model is None:
-            st.info("👆 **Next:** Train a machine learning model")
+            st.info("👆 **Next:** Train a machine learning model with XploreML")
         elif st.session_state.current_step != "xai":
-            st.success("🎉 **Pipeline Complete!** Try XAI analysis to understand your model")
+            st.success("🎉 **XploreML Pipeline Complete!** Try XAI analysis to understand your model")
 
 def _check_xai_prerequisites():
     """Check if XAI analysis can be performed."""
@@ -337,7 +311,7 @@ def _show_xai_recommendations():
         recommendations.append("⚡ **Large Dataset**: Use sampling for faster analysis")
     
     if recommendations:
-        with st.expander("💡 XAI Recommendations for Your Model"):
+        with st.expander("💡 XploreML XAI Recommendations for Your Model"):
             for rec in recommendations:
                 st.write(rec)
 
@@ -351,3 +325,12 @@ if __name__ == "__main__":
     # Show additional information
     _show_pipeline_overview()
     _show_xai_recommendations()
+    
+    # Footer with XploreML branding
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 1rem; color: #666;">
+        <p>🚀 <strong>XploreML</strong> - Learn, Experiment, and Discover Machine Learning without Code</p>
+        <p>Made with ❤️ for the Data Science Community | Version 2.0.0</p>
+    </div>
+    """, unsafe_allow_html=True)
