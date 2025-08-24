@@ -22,9 +22,16 @@ def show_progress_indicator(current_step: str):
                 st.info(f"⏳ {name}")
 
 def create_sidebar(model_trainer):
-    """Create enhanced sidebar navigation with XAI page."""
+    """Create enhanced sidebar navigation with XAI page and authentication."""
     with st.sidebar:
         st.title("🤖 ML Pipeline")
+        st.markdown("---")
+        
+        # Home button
+        if st.button("🏠 Home", use_container_width=True, key="nav_home"):
+            st.session_state.current_step = "home"
+            st.rerun()
+        
         st.markdown("---")
         
         # Navigation steps with XAI

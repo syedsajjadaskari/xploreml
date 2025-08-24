@@ -33,7 +33,7 @@ def initialize_session_state():
         'fast_training_results': {},
         
         # Navigation
-        'valid_steps': ['upload', 'explore', 'preprocess', 'train', 'evaluate', 'predict', 'xai']
+        'valid_steps': ['home', 'upload', 'explore', 'preprocess', 'train', 'evaluate', 'predict', 'xai']
     }
     
     for key, value in defaults.items():
@@ -71,7 +71,7 @@ def _check_xai_readiness():
 
 def validate_step(step):
     """Validate if step is allowed."""
-    valid_steps = st.session_state.get('valid_steps', ['upload', 'explore', 'preprocess', 'train', 'evaluate', 'predict', 'xai'])
+    valid_steps = st.session_state.get('valid_steps', ['home', 'upload', 'explore', 'preprocess', 'train', 'evaluate', 'predict', 'xai'])
     return step in valid_steps
 
 def get_next_step():
@@ -93,8 +93,8 @@ def get_next_step():
 
 def can_access_step(step):
     """Check if user can access a specific step."""
-    # Upload is always accessible
-    if step == 'upload':
+    # Home and Upload are always accessible
+    if step in ['home', 'upload']:
         return True
     
     # Need data for explore and beyond

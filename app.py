@@ -1,6 +1,6 @@
 """
-XploreML - Learn, Experiment, and Discover Machine Learning without Code
-Updated Main Application Entry Point with XAI Integration
+XploreML - Main Application with Authentication Integration
+Updated to work with homepage and Google OAuth
 """
 
 import streamlit as st
@@ -11,6 +11,17 @@ from pathlib import Path
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import authentication system
+try:
+    from utils.auth_utils import (
+        SessionManager, show_authentication_status, require_authentication,
+        check_feature_access, handle_oauth_callback
+    )
+    AUTH_AVAILABLE = True
+except ImportError:
+    AUTH_AVAILABLE = False
+    logger.warning("Authentication system not available")
 
 # Import custom modules with error handling
 try:
@@ -56,37 +67,57 @@ except ImportError as e:
     st.error(f"❌ Error importing utility modules: {e}")
     st.stop()
 
-# Page configuration with XploreML branding
-st.set_page_config(
-    page_title="XploreML - No-Code Machine Learning Platform",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={
-        'Get Help': 'https://github.com/yourusername/xploreml/wiki',
-        'Report a bug': 'https://github.com/yourusername/xploreml/issues',
-        'About': """
-        ## XploreML 🚀
-        **Learn, Experiment, and Discover Machine Learning without Code**
-        
-        XploreML makes machine learning accessible to everyone. Build, analyze, 
-        and deploy ML models without writing a single line of code.
-        
-        ### Features:
-        - 🔥 Lightning-fast training (10-30 seconds)
-        - 📊 Interactive data exploration
-        - 🧠 Advanced model explainability (XAI)
-        - 🤖 Multiple ML algorithms
-        - ☁️ Cloud-ready deployment
-        
-        **Version**: 2.0.0 | **License**: MIT
-        """
-    }
-)
+def check_authentication():
+    """Check authentication and handle redirects."""
+    
+    if not AUTH_AVAILABLE:
+        # No authentication system - allow access
+        return True
+    
+    # Handle OAuth callback if present
+    if handle_oauth_callback():
+        return True
+    
+    # Check existing session
+    session_manager = SessionManager()
+    if session_manager.is_session_valid():
+        return True
+    
+    # Not authenticated - redirect to homepage
+    st.error("🔐 Authentication required. Redirecting to homepage...")
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem;">
+        <h3>Please sign in to continue</h3>
+        <p>You'll be redirected to the homepage to sign in.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🏠 Go to Homepage", type="primary"):
+        st.session_state.show_main_app = False
+        st.rerun()
+    
+    st.stop()
+
+def show_feature_restriction(feature_name: str, required_permission: str):
+    """Show feature restriction message based on user permissions."""
+    
+    if not check_feature_access(required_permission):
+        if st.session_state.get('guest_mode'):
+            st.warning(f"🔒 **{feature_name}** requires authentication. Guest users have limited access.")
+        elif st.session_state.get('demo_mode'):
+            st.info(f"ℹ️ **{feature_name}** is limited in demo mode. Sign in for full access.")
+        else:
+            st.error(f"❌ **{feature_name}** requires higher permission level.")
+        return True
+    return False
 
 def main():
-    """Main application function with XploreML branding and XAI integration."""
+    """Main application function with authentication integration."""
     try:
+        # Check authentication first
+        if not check_authentication():
+            return
+        
         # Load configuration
         config = load_config()
         
@@ -98,14 +129,18 @@ def main():
         visualizer = Visualizer(config)
         predictor = Predictor(config)
         
+        # Show authentication status in sidebar
+        if AUTH_AVAILABLE:
+            show_authentication_status()
+        
         # Create sidebar navigation (now includes XAI)
         create_sidebar(None)
         
         # Main content area with XploreML branding
         _show_main_header()
         
-        # Show XAI availability status
-        _show_xai_status()
+        # Show user welcome message
+        _show_user_welcome()
         
         # Progress indicator (now includes XAI step)
         show_progress_indicator(st.session_state.current_step)
@@ -132,9 +167,12 @@ def main():
                 st.session_state.current_step = "train"
             st.rerun()
         
-        # Route to pages
+        # Route to pages with permission checks
         if current_step == "upload":
-            page_data_upload(data_handler)
+            if show_feature_restriction("Data Upload", "upload_data"):
+                _show_sample_data_alternative()
+            else:
+                page_data_upload(data_handler)
             
         elif current_step == "explore":
             page_data_exploration(visualizer)
@@ -153,7 +191,10 @@ def main():
             
         elif current_step == "xai":
             if XAI_PAGE_AVAILABLE:
-                page_model_explainability()
+                if show_feature_restriction("XAI Analysis", "advanced_features"):
+                    _show_xai_demo()
+                else:
+                    page_model_explainability()
             else:
                 st.error("❌ XAI page not available. Check imports.")
                 st.session_state.current_step = "predict"
@@ -174,17 +215,32 @@ def main():
         with st.expander("🔧 Debug Information"):
             st.code(str(e))
             st.write("**Current session state:**")
-            st.json({
+            debug_info = {
                 'current_step': st.session_state.get('current_step', 'unknown'),
                 'has_data': st.session_state.get('data') is not None,
                 'has_target': st.session_state.get('target_column') is not None,
                 'has_model': st.session_state.get('trained_model') is not None,
+                'authenticated': st.session_state.get('authenticated', False),
+                'demo_mode': st.session_state.get('demo_mode', False),
                 'xai_available': XAI_PAGE_AVAILABLE
-            })
+            }
+            st.json(debug_info)
 
 def _show_main_header():
-    """Show XploreML branded main header."""
-    st.markdown("""
+    """Show XploreML branded main header with user context."""
+    
+    # Get user info for personalization
+    user_name = "User"
+    if AUTH_AVAILABLE:
+        try:
+            from utils.auth_utils import SessionManager
+            session_manager = SessionManager()
+            user_info = session_manager.get_user_info()
+            user_name = user_info.get('name', 'User').split()[0]  # First name only
+        except:
+            pass
+    
+    st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 2rem;
@@ -205,50 +261,271 @@ def _show_main_header():
             margin: 0.5rem 0 0 0;
             font-weight: 300;
             opacity: 0.95;
-        ">Learn, Experiment, and Discover Machine Learning without Code</h3>
+        ">Welcome back, {user_name}! Let's build something amazing.</h3>
     </div>
     """, unsafe_allow_html=True)
 
+def _show_user_welcome():
+    """Show personalized welcome message based on user status."""
+    
+    if not AUTH_AVAILABLE:
+        return
+    
+    try:
+        from utils.auth_utils import SessionManager
+        session_manager = SessionManager()
+        
+        if session_manager.is_demo_mode():
+            st.info("🎮 **Demo Mode**: You're using XploreML in demo mode. Sign in for full access to all features!")
+        elif st.session_state.get('guest_mode'):
+            st.warning("👤 **Guest Access**: Limited features available. Sign in to unlock the full potential of XploreML!")
+        else:
+            # Show user achievements or progress
+            _show_user_progress()
+            
+    except Exception as e:
+        logger.warning(f"Error showing user welcome: {e}")
 
+def _show_user_progress():
+    """Show user's progress and achievements."""
+    
+    try:
+        # Calculate progress
+        progress_items = [
+            ("Data uploaded", st.session_state.get('data') is not None),
+            ("Target selected", st.session_state.get('target_column') is not None),
+            ("Model trained", st.session_state.get('trained_model') is not None),
+            ("Results analyzed", st.session_state.get('trained_model') is not None),
+        ]
+        
+        completed = sum(1 for _, done in progress_items if done)
+        total = len(progress_items)
+        progress_pct = (completed / total) * 100
+        
+        if progress_pct > 0:
+            st.success(f"🎯 **Progress**: {completed}/{total} steps completed ({progress_pct:.0f}%)")
+            
+            if completed == total:
+                st.balloons()
+                st.markdown("🏆 **Congratulations!** You've completed the full ML pipeline!")
+        
+    except Exception as e:
+        logger.warning(f"Error showing user progress: {e}")
 
-def _initialize_xai_session_state():
-    """Initialize XAI-specific session state variables."""
-    xai_defaults = {
-        'xai_analysis_cache': {},
-        'xai_current_analysis': None,
-        'xai_sample_size': 200,
-        'xai_quick_start': None,
-        'xai_preferred_method': 'auto'
+def _show_sample_data_alternative():
+    """Show sample data option when upload is restricted."""
+    
+    st.markdown("### 🎲 Sample Data Available")
+    st.info("Upload is restricted in your current access level, but you can explore with sample datasets!")
+    
+    sample_datasets = {
+        "Titanic Survival": "Predict passenger survival (Classification)",
+        "Boston Housing": "Predict house prices (Regression)", 
+        "Iris Flowers": "Classify flower species (Classification)",
+        "Wine Quality": "Predict wine ratings (Regression)"
     }
     
-    for key, value in xai_defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        selected_dataset = st.selectbox(
+            "Choose a sample dataset:",
+            list(sample_datasets.keys()),
+            help="Explore XploreML with these curated datasets"
+        )
+        
+        if selected_dataset:
+            st.info(f"📖 {sample_datasets[selected_dataset]}")
+    
+    with col2:
+        if st.button("📊 Load Sample Data", type="primary", use_container_width=True):
+            try:
+                # Load sample data through data handler
+                from src.data_handler import DataHandler
+                data_handler = DataHandler({})
+                
+                dataset_map = {
+                    "Titanic Survival": "titanic",
+                    "Boston Housing": "boston",
+                    "Iris Flowers": "iris", 
+                    "Wine Quality": "wine"
+                }
+                
+                dataset_name = dataset_map.get(selected_dataset, "titanic")
+                data = data_handler.load_sample_data(dataset_name)
+                
+                if data is not None:
+                    st.session_state.data = data
+                    
+                    # Auto-set target based on dataset
+                    target_map = {
+                        "titanic": "Survived",
+                        "boston": "medv", 
+                        "iris": "species",
+                        "wine": "quality"
+                    }
+                    
+                    target_col = target_map.get(dataset_name)
+                    if target_col and target_col in data.columns:
+                        st.session_state.target_column = target_col
+                        st.session_state.problem_type = data_handler.detect_problem_type(data, target_col)
+                    
+                    st.success(f"✅ {selected_dataset} dataset loaded!")
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to load sample dataset")
+                    
+            except Exception as e:
+                st.error(f"❌ Error loading sample data: {str(e)}")
+    
+    # Show upgrade prompt
+    st.markdown("---")
+    st.markdown("### 🚀 Want to upload your own data?")
+    
+    upgrade_col1, upgrade_col2 = st.columns(2)
+    
+    with upgrade_col1:
+        st.markdown("**Sign in for full access:**")
+        st.markdown("- 📁 Upload your own datasets")
+        st.markdown("- 💾 Save and manage models")
+        st.markdown("- 📊 Export results and reports")
+        st.markdown("- 🧠 Advanced XAI analysis")
+    
+    with upgrade_col2:
+        if st.button("🔑 Sign In Now", type="primary", use_container_width=True):
+            st.session_state.show_main_app = False
+            st.rerun()
+
+def _show_xai_demo():
+    """Show XAI demo when advanced features are restricted."""
+    
+    st.markdown("### 🧠 XAI Analysis Demo")
+    st.info("Advanced XAI features require full authentication. Here's what you're missing:")
+    
+    demo_col1, demo_col2 = st.columns(2)
+    
+    with demo_col1:
+        st.markdown("""
+        **🌍 Global Analysis:**
+        - Model-wide feature importance
+        - Performance breakdown by features
+        - Decision boundary visualization
+        - Bias detection and analysis
+        
+        **🎯 Local Explanations:**
+        - Individual prediction explanations
+        - LIME/SHAP analysis
+        - Feature contribution breakdown
+        - What-if scenario analysis
+        """)
+    
+    with demo_col2:
+        st.markdown("""
+        **📊 Advanced Features:**
+        - Partial dependence plots
+        - Feature interaction analysis
+        - Model comparison explanations
+        - Surrogate model generation
+        
+        **🔍 Model Debugging:**
+        - Error analysis by features
+        - Prediction confidence analysis
+        - Model behavior insights
+        - Performance optimization tips
+        """)
+    
+    # Show a sample XAI visualization
+    st.markdown("#### 📈 Sample XAI Output")
+    
+    import plotly.graph_objects as go
+    import numpy as np
+    
+    # Create sample feature importance chart
+    features = ['Income', 'Age', 'Education', 'Experience', 'Location']
+    importance = [0.35, 0.25, 0.20, 0.15, 0.05]
+    
+    fig = go.Figure(data=go.Bar(
+        x=importance,
+        y=features,
+        orientation='h',
+        marker_color=['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57']
+    ))
+    
+    fig.update_layout(
+        title="Sample Feature Importance Analysis",
+        xaxis_title="Importance Score",
+        height=300,
+        template='plotly_white'
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.success("🚀 **This is just a sample!** Sign in to analyze your own models with full XAI capabilities.")
+    
+    if st.button("🔓 Unlock Full XAI Analysis", type="primary", use_container_width=True):
+        st.session_state.show_main_app = False
+        st.rerun()
 
 def _show_pipeline_overview():
-    """Show enhanced pipeline overview with XAI and XploreML branding."""
+    """Show enhanced pipeline overview with user permissions."""
     with st.expander("🔍 XploreML Pipeline Overview"):
+        
+        # Get user permissions
+        permissions = {}
+        if AUTH_AVAILABLE:
+            try:
+                from utils.auth_utils import get_user_permissions
+                permissions = get_user_permissions()
+            except:
+                permissions = {}
+        
         steps_status = {
-            "📁 Data Upload": st.session_state.data is not None,
-            "🔍 Data Exploration": st.session_state.target_column is not None,
-            "⚙️ Preprocessing": st.session_state.get('preview_data') is not None,
-            "🎯 Model Training": st.session_state.trained_model is not None,
-            "📊 Model Evaluation": st.session_state.trained_model is not None,
-            "🔮 Predictions": st.session_state.trained_model is not None,
-            "🧠 XAI Analysis": st.session_state.trained_model is not None and XAI_PAGE_AVAILABLE
+            "📁 Data Upload": (
+                st.session_state.data is not None,
+                permissions.get('upload_data', True)
+            ),
+            "🔍 Data Exploration": (
+                st.session_state.target_column is not None,
+                True
+            ),
+            "⚙️ Preprocessing": (
+                st.session_state.get('preview_data') is not None,
+                True
+            ),
+            "🎯 Model Training": (
+                st.session_state.trained_model is not None,
+                True
+            ),
+            "📊 Model Evaluation": (
+                st.session_state.trained_model is not None,
+                True
+            ),
+            "🔮 Predictions": (
+                st.session_state.trained_model is not None,
+                True
+            ),
+            "🧠 XAI Analysis": (
+                st.session_state.trained_model is not None and XAI_PAGE_AVAILABLE,
+                permissions.get('advanced_features', True)
+            )
         }
         
         cols = st.columns(len(steps_status))
-        for i, (step, completed) in enumerate(steps_status.items()):
+        for i, (step, (completed, allowed)) in enumerate(steps_status.items()):
             with cols[i]:
-                if completed:
+                if not allowed:
+                    st.error(f"🔒 {step}")
+                elif completed:
                     st.success(f"✅ {step}")
                 else:
                     st.info(f"⏳ {step}")
         
-        # Show next recommended action with XploreML branding
+        # Show next recommended action with permissions
         if st.session_state.data is None:
-            st.info("👆 **Next:** Upload your dataset to begin your XploreML journey")
+            if permissions.get('upload_data', True):
+                st.info("👆 **Next:** Upload your dataset to begin your XploreML journey")
+            else:
+                st.info("👆 **Next:** Try sample data to explore XploreML features")
         elif st.session_state.target_column is None:
             st.info("👆 **Next:** Explore data and select target column")
         elif st.session_state.trained_model is None:
@@ -256,81 +533,94 @@ def _show_pipeline_overview():
         elif st.session_state.current_step != "xai":
             st.success("🎉 **XploreML Pipeline Complete!** Try XAI analysis to understand your model")
 
-def _check_xai_prerequisites():
-    """Check if XAI analysis can be performed."""
-    prerequisites = {
-        'data_available': st.session_state.data is not None,
-        'target_selected': st.session_state.target_column is not None,
-        'model_trained': st.session_state.trained_model is not None,
-        'trainer_available': st.session_state.get('fast_trainer') is not None,
-        'xai_page_available': XAI_PAGE_AVAILABLE
-    }
+def _show_permission_status():
+    """Show current user's permission status."""
     
-    return all(prerequisites.values()), prerequisites
-
-def _show_xai_recommendations():
-    """Show XAI method recommendations based on current model."""
-    if st.session_state.trained_model is None:
+    if not AUTH_AVAILABLE:
         return
     
-    model_type = type(st.session_state.trained_model).__name__
-    
-    recommendations = []
-    
-    # Model-specific recommendations
-    if 'Forest' in model_type or 'Tree' in model_type:
-        recommendations.extend([
-            "🌲 **Tree-based Model Detected**: Use built-in feature importance for quick insights",
-            "⚡ **Fast Analysis**: Tree models work excellently with all XAI methods",
-            "🎯 **Recommended**: Start with Global Analysis → Feature Importance"
-        ])
-    elif 'Linear' in model_type or 'Logistic' in model_type:
-        recommendations.extend([
-            "📊 **Linear Model Detected**: Coefficient analysis provides direct interpretability",
-            "🔍 **Transparency**: Linear models are inherently interpretable",
-            "🎯 **Recommended**: Focus on Feature Analysis → Coefficient interpretation"
-        ])
-    elif 'SVM' in model_type or 'SVC' in model_type:
-        recommendations.extend([
-            "🔧 **SVM Model Detected**: Use model-agnostic methods for best results",
-            "🧠 **Complex Boundaries**: LIME explanations work well for local insights",
-            "🎯 **Recommended**: Start with Local Analysis → LIME explanations"
-        ])
-    else:
-        recommendations.extend([
-            "🤖 **Universal Methods Available**: All XAI techniques compatible",
-            "🔍 **Model-Agnostic**: Permutation importance works for any model",
-            "🎯 **Recommended**: Start with Global Analysis → Permutation importance"
-        ])
-    
-    # Data size recommendations
-    data_size = len(st.session_state.data) if st.session_state.data is not None else 0
-    if data_size < 1000:
-        recommendations.append("📊 **Small Dataset**: Detailed analysis possible with all methods")
-    elif data_size > 10000:
-        recommendations.append("⚡ **Large Dataset**: Use sampling for faster analysis")
-    
-    if recommendations:
-        with st.expander("💡 XploreML XAI Recommendations for Your Model"):
-            for rec in recommendations:
-                st.write(rec)
+    try:
+        from utils.auth_utils import get_user_permissions, SessionManager
+        
+        permissions = get_user_permissions()
+        session_manager = SessionManager()
+        
+        with st.expander("🔑 Access Level & Permissions"):
+            
+            # Show user mode
+            if st.session_state.get('guest_mode'):
+                st.markdown("**👤 Guest Mode** - Limited access")
+            elif session_manager.is_demo_mode():
+                st.markdown("**🎮 Demo Mode** - Most features available")
+            else:
+                st.markdown("**🔐 Full Access** - All features available")
+            
+            # Show specific permissions
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Available Features:**")
+                for feature, allowed in permissions.items():
+                    icon = "✅" if allowed else "❌"
+                    feature_name = feature.replace('_', ' ').title()
+                    st.markdown(f"{icon} {feature_name}")
+            
+            with col2:
+                st.markdown("**Upgrade Benefits:**")
+                if not all(permissions.values()):
+                    st.markdown("- 🔓 Unlock all features")
+                    st.markdown("- 📁 Upload unlimited data")
+                    st.markdown("- 💾 Save models permanently")
+                    st.markdown("- 🧠 Advanced XAI analysis")
+                    
+                    if st.button("⬆️ Upgrade Access", type="primary", use_container_width=True):
+                        st.session_state.show_main_app = False
+                        st.rerun()
+                else:
+                    st.success("🎉 You have full access!")
+                    
+    except Exception as e:
+        logger.warning(f"Error showing permission status: {e}")
 
 if __name__ == "__main__":
-    # Initialize XAI session state
-    _initialize_xai_session_state()
+    # Check if we should show main app or redirect to homepage
+    if st.session_state.get('show_main_app', True):
+        # Run main application
+        main()
+        
+        # Show additional information
+        _show_pipeline_overview()
+        _show_permission_status()
+        
+        # Footer with authentication info
+        st.markdown("---")
+        
+        footer_col1, footer_col2 = st.columns([3, 1])
+        
+        with footer_col1:
+            st.markdown("""
+            <div style="text-align: center; padding: 1rem; color: #666;">
+                <p>🚀 <strong>XploreML</strong> - Learn, Experiment, and Discover Machine Learning without Code</p>
+                <p>Made with ❤️ for the Data Science Community | Version 2.0.0</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with footer_col2:
+            if AUTH_AVAILABLE:
+                if st.button("🏠 Homepage", use_container_width=True):
+                    st.session_state.show_main_app = False
+                    st.rerun()
     
-    # Run main application
-    main()
-    
-    # Show additional information
-    _show_pipeline_overview()
-    _show_xai_recommendations()
-    
-    # Footer with XploreML branding
-    st.markdown("---")
-    st.markdown("""
-    <div style="text-align: center; padding: 1rem; color: #666;">
-        <p>🚀 <strong>XploreML</strong> - Learn, Experiment, and Discover Machine Learning without Code</p>
-        <p>Made with ❤️ for the Data Science Community | Version 2.0.0</p>
-    </div>
-    """, unsafe_allow_html=True)
+    else:
+        # Redirect to homepage
+        st.markdown("""
+        <script>
+        window.location.href = '/';
+        </script>
+        """, unsafe_allow_html=True)
+        
+        st.info("Redirecting to homepage...")
+        
+        if st.button("🏠 Go to Homepage", type="primary"):
+            st.session_state.show_main_app = False
+            st.rerun()
